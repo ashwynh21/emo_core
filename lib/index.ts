@@ -6,4 +6,11 @@ const app = new Application({
     host: 'imap.gmail.com',
     port: 993,
 });
-app.listen();
+app.listen(() => console.log('[index]: ready() - listening'));
+
+app.on('mail', (mail) => {
+    console.log('[index]: mail()', mail);
+});
+app.on('error', (error) => {
+    console.log('[index]: error()', error);
+});

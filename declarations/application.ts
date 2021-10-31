@@ -4,7 +4,7 @@
  * custom features to the client
  * */
 import Connection, { Box, parseHeader } from 'imap';
-import { EventEmitter } from 'events';
+import { EventEmitter, once } from 'events';
 // we import reflect-meta for some decorators
 import 'reflect-metadata';
 
@@ -29,7 +29,7 @@ export class Application extends EventEmitter {
         });
 
         // once constructed we will bind in the decorated functions for the event listeners
-        this.bind();
+        this.context.on('ready', () => this.ready());
     }
     // We define a function that will bind functions of a class as a listener to an instance of a client reference
     private bind() {
@@ -42,30 +42,30 @@ export class Application extends EventEmitter {
 
             // so we will check the typeof property to make sure it is a function then we will pass as the listener
             // callback to the corresponding eventName
-            if (typeof this[propertyKey] == 'function') {
-                this.context.on(eventName, (...args: any[]) =>
-                    (this[propertyKey] as (...args: any[]) => void)(...args),
-                );
-            }
+            this.context.on(eventName, (...args: any[]) => (this[propertyKey] as (...args: any[]) => void)(...args));
         });
     }
 
     // we define a function called listen which is very akin to server structures and it will run a couple of things
-    listen() {
+    listen(callback?: (...args: any[]) => void) {
         this.context.connect();
+        if (callback) {
+            this.on('ready', () => callback());
+        }
     }
 
-    // we define a function that will handle a ready event
-    @listen()
+    // we define a function that will handle a ready event after connecting
     private ready() {
         // so we should open the inbox so that we are able to go straight to the messages
         this.context.openBox('INBOX', true, (error, mailbox) => {
-            if (error) this.emit('error', error);
+            if (error) return this.emit('error', error);
 
             this.inbox = mailbox;
             // we will emit the ready event with a mailbox instance so that a user is able to readily check the
             // mailbox structure
-            this.emit('ready', mailbox);
+            this.bind();
+            // then we emit a ready event
+            return this.emit('ready', mailbox);
         });
     }
 
@@ -74,41 +74,35 @@ export class Application extends EventEmitter {
     private mail() {
         // so we want this mail event to emit a parsed email object right
         const query = this.inbox?.messages.total ?? 0;
-
         const result = this.context.seq.fetch(`${query}:*`, {
             bodies: ['1', '1.MIME', '2', '2.MIME', '', 'HEADER'],
             struct: true,
         });
 
-        // we define a cache instance
-        const cache: any = {};
         // then we get each message
-        result.on('message', (message, seqno) => {
+        once(result, 'message').then(([message, _]) => {
             const email: Record<string, string> = {};
 
             // then we listen for the message events
             message.on('body', async (stream: any, information: { which: string }) => {
                 // then we write from the stream by combining the streams through the parser instance
-                email[information.which] = await new Promise<string>((resolve) => {
-                    const buffer: Uint8Array[] = [];
-                    stream.on('data', (chunk: Uint8Array) => buffer.push(chunk));
-                    stream.on('end', () => resolve(Buffer.concat(buffer).toString()));
+
+                const buffer: Uint8Array[] = [];
+                stream.on('data', (chunk: Uint8Array) => buffer.push(chunk));
+                stream.on('end', () => {
+                    email[information.which] = Buffer.concat(buffer).toString();
                 });
             });
             message.on('end', async () => {
                 // then we go through each stream and write to the parser
-                cache[seqno.toString()] = {
+                this.emit('mail', {
                     HEADER: await parseHeader(email['HEADER']),
                     '1': email['1'].split('\r\n').join(''),
                     '2': email['2'],
                     '1.MIME': await parseHeader(email['1.MIME']),
                     '2.MIME': await parseHeader(email['2.MIME']),
-                };
+                });
             });
-        });
-        result.on('end', () => {
-            // so when the query result is done we should have a complete set of messages or mails that we can emit out
-            this.emit('mail', cache);
         });
         result.on('error', (error) => this.emit('error', error));
     }
