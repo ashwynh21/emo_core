@@ -13,28 +13,16 @@ export class Mail {
                 // we will first spread the header to get
                 ...header,
 
-                from: {
-                    name: header.from[0].split(' <')[0],
-                    address: header.from[0].split(' <')[1].split('>')[0],
-                },
+                from: getAddress(header.from[0]),
                 to: header.to.map((to: string) => {
-                    return {
-                        name: to.split(' <')[0],
-                        address: to.split(' <')[1].split('>')[0],
-                    };
+                    return getAddress(to);
                 }),
 
                 cc: header.cc?.map((to: string) => {
-                    return {
-                        name: to.split(' <')[0],
-                        address: to.split(' <')[1].split('>')[0],
-                    };
+                    return getAddress(to);
                 }),
                 bcc: header.bcc?.map((to: string) => {
-                    return {
-                        name: to.split(' <')[0],
-                        address: to.split(' <')[1].split('>')[0],
-                    };
+                    return getAddress(to);
                 }),
 
                 subject: header.subject[0],
@@ -51,11 +39,11 @@ export class Mail {
 
 interface Header {
     // we capture the main recipient
-    from: { name: string; address: string };
-    to: { name: string; address: string }[];
+    from: { name?: string; address: string };
+    to: { name?: string; address: string }[];
     // then we model the extra recipients
-    cc?: { name: string; address: string }[];
-    bcc?: { name: string; address: string }[];
+    cc?: { name?: string; address: string }[];
+    bcc?: { name?: string; address: string }[];
     // then the subject
     subject: string;
     // then the date
@@ -86,4 +74,25 @@ interface Parts {
     //
     attributes: any;
     attachments: any[];
+}
+
+/*
+ * We are going to need to define helper functions that will make sure that we extract data properly from the parts
+ * structure
+ * */
+function getAddress(line: string): { name?: string; address: string } {
+    // so so far we have 2 cases that we should consider and we will define them here -
+    // 1) ashwynh21@gmail.com
+    // 2) Ashwyn Horton <ashwynh21@gmail.com>
+    // so as a solution we can check if the string has an angle brace
+    if (line.includes('<')) {
+        return {
+            name: line.split(' <')[0],
+            address: line.split(' <')[1].split('>')[0],
+        };
+    }
+    // otherwise just return the line
+    return {
+        address: line,
+    };
 }

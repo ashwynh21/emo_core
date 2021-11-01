@@ -8,7 +8,8 @@ import { EventEmitter, once } from 'events';
 // we import reflect-meta for some decorators
 import 'reflect-metadata';
 import { Mail } from './message';
-import { Transporter, createTransport } from 'nodemailer';
+import nodemailer, { Transporter, createTransport } from 'nodemailer';
+import { Options as MailOptions } from 'nodemailer/lib/mailer';
 
 interface Options {
     user: string;
@@ -16,13 +17,14 @@ interface Options {
     host: string;
     port: number;
 }
+
 export class Application extends EventEmitter {
     private context: Connection;
     private mailer: Transporter;
 
     inbox: Box | undefined;
 
-    constructor(options: Options) {
+    constructor(public options: Options) {
         super();
 
         // we first setup the connection
@@ -33,7 +35,15 @@ export class Application extends EventEmitter {
             tlsOptions: { rejectUnauthorized: false },
         });
         // then we setup the mailer connection
-        this.mailer = createTransport({});
+        this.mailer = createTransport({
+            host: options.host.replace('imap', 'smtp'),
+            port: 465,
+            secure: true,
+            auth: {
+                user: options.user,
+                pass: options.password,
+            },
+        });
 
         // once constructed we will bind in the decorated functions for the event listeners
         this.context.on('ready', () => this.ready());
@@ -46,9 +56,11 @@ export class Application extends EventEmitter {
             this.on('ready', () => callback());
         }
     }
+
     // we define a function to send emails to a given address
-    send() {
-        //...
+    send(mail: MailOptions) {
+        //...we will just reference the private mailer instance and use the same configuration
+        return this.mailer.sendMail(mail);
     }
 
     // We define a function that will bind functions of a class as a listener to an instance of a client reference
@@ -153,20 +165,20 @@ export class Application extends EventEmitter {
             });
             message.on('end', async () => {
                 // then we go through each stream and write to the parser
-                this.emit(
-                    'mail',
-                    Mail.fromParts({
-                        header: await parseHeader(email['HEADER']),
-                        body: email['1'],
-                        mime: email['1.MIME'].split('\r\n').reduce((a: any, c: string) => {
-                            const [k, v] = c.split(': ');
-                            a[k] = v;
-                            return a;
-                        }, {} as Record<string, string>),
-                        attributes: email.attributes,
-                        attachments: await email.attachments,
-                    }),
-                );
+                const result = {
+                    header: await parseHeader(email['HEADER']),
+                    body: email['1'],
+                    mime: email['1.MIME'].split('\r\n').reduce((a: any, c: string) => {
+                        const [k, v] = c.split(': ');
+                        a[k] = v;
+                        return a;
+                    }, {} as Record<string, string>),
+                    attributes: email.attributes,
+                    attachments: await email.attachments,
+                };
+
+                // then we parse out data
+                this.emit('mail', Mail.fromParts(result));
             });
         });
         result.on('error', (error) => this.emit('error', error));
