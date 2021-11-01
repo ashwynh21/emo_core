@@ -74,10 +74,6 @@ function getFile(file: string) {
 function checkFile(buffer: any) {
     return new Promise((resolve, reject) => {
         const parser = new PDF2JSON();
-        // then we parse in the buffer
-        const document = parser.parseBuffer(buffer);
-        // now there are stream events that will be emitted by the parser that we will listen for to evaluate the
-        // data in the file.
         parser.on('pdfParser_dataError', (error: Error) => reject(error));
         // then we capture the data with the on data ready event on the object
         parser.on('pdfParser_dataReady', (data: any) => {
@@ -104,6 +100,7 @@ function checkFile(buffer: any) {
                     }, {} as any),
                     text: parseFNB(text),
                 };
+                // then finally we will resolve the file data that has been parsed.
                 resolve(parsed);
             } catch (error) {
                 reject(error);
@@ -112,5 +109,7 @@ function checkFile(buffer: any) {
             // then we log the output to make sure that the data is the way we need it to be then we will set the
             // expectations
         });
+
+        parser.parseBuffer(buffer);
     });
 }
