@@ -18,9 +18,10 @@
  *    'END OF NOTIFICATION'
  * 2. after the header there will be some text with instructions on how to validate the file from the fnb website, it
  *    is tailed by '. .' which can be split or trimmed off the text.
- * 3. the end of the file will have information about the signaturies of the company which is pretty useless but can be
+ * 3. the end of the file will have information about the signatories of the company which is pretty useless but can be
  *    useful nonetheless.
  * */
+const PDF2JSON = require('pdf2json');
 
 export function parseFNB(text: string) {
     // let us start by taking out the header and the trailing footer of the text file
@@ -31,7 +32,7 @@ export function parseFNB(text: string) {
     instruction = instruction.trim();
     // now we get the date actioned field which we will combine with the time actioned to generate a data instance
     const [t, ...c] = b.join('. . . ').split('trace id');
-    const [_, date, time] = t.trim().split(' : ');
+    const [, date, time] = t.trim().split(' : ');
     const [trace_id, ...d] = c.join('').split(' . . . . ');
     const [from, ...e] = d.join(' ').split(' - ');
     const [type, ...f] = e.join(' - ').split(' cur/amount : ');
@@ -64,4 +65,50 @@ export function parseFNB(text: string) {
         // then the remains are the footer
         footer: footer.join(''),
     };
+}
+
+export function parsePDFJson(data: any) {
+    // so we now have a vague idea of what to expect from the json input so let us take a look, the end idea is to
+    // convert the data to text and then return we will decide what to do with the data in another function.
+    // so to start we will map the data still as an object but with a few differences
+    const text = data.Pages.map((page: any) => page.Texts)
+        .reduce((a: any[], c: any[]) => {
+            a.push(...c);
+            return a;
+        }, [])
+        .map((text: { R: any[] }) => decodeURIComponent(text?.R[0].T).toLowerCase())
+        .join(' ')
+        .split(' ')
+        .filter((s: any) => s)
+        .join(' ');
+    // then finally we will resolve the file data that has been parsed.
+    return {
+        transcoder: data.Transcoder,
+        meta: Object.entries(data.Meta).reduce((a, [k, v]: [string, any]) => {
+            a[k.toLowerCase()] = v;
+            return a;
+        }, {} as any),
+        text: parseFNB(text),
+    };
+}
+
+export function readPDF(buffer: Buffer) {
+    return new Promise((resolve, reject) => {
+        // from here we will need to parse the information through a pdf parsing instance.
+        const parser = new PDF2JSON();
+        // then we parse in the buffer
+        // now there are stream events that will be emitted by the parser that we will listen for to evaluate the
+        // data in the file.
+        parser.on('pdfParser_dataError', (error: Error) => reject(error));
+        parser.on('pdfParser_dataReady', (data: any) => {
+            // then in here we will then run the conversion of the pdf
+            // so from here we will define a mapping function that will convert the json data into an array
+            try {
+                resolve(parsePDFJson(data));
+            } catch (error) {
+                reject(error);
+            }
+        });
+        parser.parseBuffer(buffer);
+    });
 }

@@ -3,7 +3,7 @@ import { Mail } from '../declarations/message';
 import { attachmentNotFound } from './responses';
 
 import contacts from './contacts';
-import { parseFNB } from './templates';
+import { readPDF } from './templates';
 // we will be using pdf lib to get the reading functionality working
 const PDF2JSON = require('pdf2json');
 
@@ -60,68 +60,23 @@ app.on('mail', async (mail: Mail) => {
     // then we loop through the attachments
     const files = await Promise.allSettled(
         pdf_attachments.map((attachment) => {
-            return new Promise((resolve, reject) => {
-                const buffer = Buffer.from(attachment.data, 'base64');
-                // from here we will need to parse the information through a pdf parsing instance.
-                const parser = new PDF2JSON();
-                // then we parse in the buffer
-                const document = parser.parseBuffer(buffer);
-                // now there are stream events that will be emitted by the parser that we will listen for to evaluate the
-                // data in the file.
-                parser.on('pdfParser_dataError', (error: Error) => reject(error));
-                parser.on('pdfParser_dataReady', (data: any) => {
-                    // then in here we will then run the conversion of the pdf
-                    // so from here we will define a mapping function that will convert the json data into an array
-                    try {
-                        resolve(parsePDFJson(data));
-                    } catch (error) {
-                        reject(error);
-                    }
-                });
-            });
+            return readPDF(Buffer.from(attachment.data, 'base64'));
         }),
     )
         // otherwise we should then consider the payment as valid and get the result
         .then((files: any[]) => {
             if (files.filter((a) => a instanceof Error).length > 0) {
-                return app
-                    .send({
-                        ...email,
-                        text: attachmentNotFound(mail.header.from.name ?? mail.header.from.address, 'Ashwyn Horton'),
-                    })
-                    .then(() => console.log('[index]: send()'));
+                app.send({
+                    ...email,
+                    text: attachmentNotFound(mail.header.from.name ?? mail.header.from.address, 'Ashwyn Horton'),
+                }).then(() => console.log('[index]: send()'));
             }
             // then we log
-            const result = files.filter((a) => !(a instanceof Error)).map((a) => a.value);
-            console.log(result);
+            return files.filter((a) => !(a instanceof Error)).map((a) => a.value);
         });
+
+    // at this point we will need to store the data to record a valid payment
 });
 app.on('error', (error) => {
     console.log('[index]: error()', error);
 });
-
-// we define some helper functions
-function parsePDFJson(data: any) {
-    // so we now have a vague idea of what to expect from the json input so let us take a look, the end idea is to
-    // convert the data to text and then return we will decide what to do with the data in another function.
-    // so to start we will map the data still as an object but with a few differences
-    const text = data.Pages.map((page: any) => page.Texts)
-        .reduce((a: any[], c: any[]) => {
-            a.push(...c);
-            return a;
-        }, [])
-        .map((text: { R: any[] }) => decodeURIComponent(text?.R[0].T).toLowerCase())
-        .join(' ')
-        .split(' ')
-        .filter((s: any) => s)
-        .join(' ');
-    // then finally we will resolve the file data that has been parsed.
-    return {
-        transcoder: data.Transcoder,
-        meta: Object.entries(data.Meta).reduce((a, [k, v]: [string, any]) => {
-            a[k.toLowerCase()] = v;
-            return a;
-        }, {} as any),
-        text: parseFNB(text),
-    };
-}
