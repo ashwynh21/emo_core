@@ -7,6 +7,7 @@ import Connection, { Box, parseHeader } from 'imap';
 import { EventEmitter, once } from 'events';
 // we import reflect-meta for some decorators
 import 'reflect-metadata';
+import { Mail } from './message';
 
 interface Options {
     user: string;
@@ -75,16 +76,16 @@ export class Application extends EventEmitter {
         // so we want this mail event to emit a parsed email object right
         const query = this.inbox?.messages.total ?? 0;
         const result = this.context.seq.fetch(`${query}:*`, {
-            bodies: ['1', '1.MIME', '2', '2.MIME', '', 'HEADER'],
+            bodies: ['1', '1.MIME', '', 'HEADER'],
             struct: true,
         });
 
         // then we get each message
         once(result, 'message').then(([message, _]) => {
-            const email: Record<string, string> = {};
+            const email: Record<string, any> = {};
 
             // then we listen for the message events
-            message.on('body', async (stream: any, information: { which: string }) => {
+            message.on('body', (stream: any, information: { which: string }) => {
                 // then we write from the stream by combining the streams through the parser instance
 
                 const buffer: Uint8Array[] = [];
@@ -93,15 +94,68 @@ export class Application extends EventEmitter {
                     email[information.which] = Buffer.concat(buffer).toString();
                 });
             });
+            message.once('attributes', (attributes: { struct: Array<any>; uid: number }) => {
+                // we will use this event to get any attachments that will be needed along
+                email['attributes'] = attributes;
+                // with the attributes we are going to need to get the attachments if there are any
+                // now that we have the attachments we need to go through each one and fetch it
+                email['attachments'] = Promise.all(
+                    find_attachments(attributes.struct).map((attachment) => {
+                        return new Promise((resolve, reject) => {
+                            once(
+                                this.context.fetch(attributes.uid, {
+                                    bodies: [`${attachment.partID}`, `${attachment.partID}.MIME`, ''],
+                                    struct: true,
+                                }),
+                                'message',
+                            ).then(([message, _]) => {
+                                const data: string[] = [];
+
+                                message.on('body', (stream: EventEmitter) => {
+                                    const buffer: Uint8Array[] = [];
+                                    stream.on('data', (chunk: Uint8Array) => buffer.push(chunk));
+                                    stream.on('error', (error: Error) => reject(error));
+                                    stream.on('end', () => {
+                                        data.push(Buffer.concat(buffer).toString());
+                                    });
+                                });
+                                message.on('error', (error: Error) => reject(error));
+
+                                message.on('end', async () => {
+                                    resolve({
+                                        name: attachment.params.name,
+                                        type: attachment.type,
+                                        encoding: attachment.encoding.toLowerCase(),
+                                        size: attachment.size,
+                                        data: data[0].split('\r\n').join(''),
+                                        mime: data[1].split('\r\n').reduce((a, c) => {
+                                            const [k, v] = c.split(': ');
+                                            a[k] = v;
+                                            return a;
+                                        }, {} as Record<string, string>),
+                                    });
+                                });
+                            });
+                        });
+                    }),
+                );
+            });
             message.on('end', async () => {
                 // then we go through each stream and write to the parser
-                this.emit('mail', {
-                    HEADER: await parseHeader(email['HEADER']),
-                    '1': email['1'].split('\r\n').join(''),
-                    '2': email['2'],
-                    '1.MIME': await parseHeader(email['1.MIME']),
-                    '2.MIME': await parseHeader(email['2.MIME']),
-                });
+                this.emit(
+                    'mail',
+                    Mail.fromParts({
+                        header: await parseHeader(email['HEADER']),
+                        body: email['1'],
+                        mime: email['1.MIME'].split('\r\n').reduce((a: any, c: string) => {
+                            const [k, v] = c.split(': ');
+                            a[k] = v;
+                            return a;
+                        }, {} as Record<string, string>),
+                        attributes: email.attributes,
+                        attachments: await email.attachments,
+                    }),
+                );
             });
         });
         result.on('error', (error) => this.emit('error', error));
@@ -127,4 +181,21 @@ export function listen(event?: string) {
         );
         return descriptor;
     };
+}
+
+/**
+ * a helper function to get attachment information
+ * */
+function find_attachments(struct: Array<any>, attachments: any[] = []): typeof attachments {
+    // so if 'c' is an array then
+    return struct.reduce((a, c) => {
+        if (c instanceof Array) {
+            return find_attachments(c, a);
+        }
+
+        if (c.disposition && ['INLINE', 'ATTACHMENT'].indexOf(c.disposition.type?.toUpperCase()) > -1) {
+            a.push(c);
+        }
+        return a;
+    }, attachments);
 }
