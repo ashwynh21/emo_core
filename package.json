@@ -19,6 +19,8 @@
     "@types/imap": "^0.8.35",
     "@types/mailparser": "^3.0.3",
     "@types/mocha": "^9.0.0",
+    "@types/nodemailer": "^6.4.4",
+    "@types/pdfkit": "^0.12.3",
     "@typescript-eslint/eslint-plugin": "^5.2.0",
     "@typescript-eslint/parser": "^5.2.0",
     "chai": "^4.3.4",
@@ -38,6 +40,8 @@
   },
   "dependencies": {
     "imap": "^0.8.19",
-    "mailparser": "^3.4.0"
+    "mailparser": "^3.4.0",
+    "nodemailer": "^6.7.0",
+    "pdfkit": "^0.13.0"
   }
 }

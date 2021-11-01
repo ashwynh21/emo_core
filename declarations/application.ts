@@ -8,6 +8,7 @@ import { EventEmitter, once } from 'events';
 // we import reflect-meta for some decorators
 import 'reflect-metadata';
 import { Mail } from './message';
+import { Transporter, createTransport } from 'nodemailer';
 
 interface Options {
     user: string;
@@ -17,21 +18,39 @@ interface Options {
 }
 export class Application extends EventEmitter {
     private context: Connection;
+    private mailer: Transporter;
+
     inbox: Box | undefined;
 
     constructor(options: Options) {
         super();
 
+        // we first setup the connection
         this.context = new Connection({
             ...options,
             tls: true,
             // we add this key so we do not get the self signed certificate error
             tlsOptions: { rejectUnauthorized: false },
         });
+        // then we setup the mailer connection
+        this.mailer = createTransport({});
 
         // once constructed we will bind in the decorated functions for the event listeners
         this.context.on('ready', () => this.ready());
     }
+
+    // we define a function called listen which is very akin to server structures and it will run a couple of things
+    listen(callback?: (...args: any[]) => void) {
+        this.context.connect();
+        if (callback) {
+            this.on('ready', () => callback());
+        }
+    }
+    // we define a function to send emails to a given address
+    send() {
+        //...
+    }
+
     // We define a function that will bind functions of a class as a listener to an instance of a client reference
     private bind() {
         // we begin by getting any meta data tagged to this class instance as its target
@@ -45,14 +64,6 @@ export class Application extends EventEmitter {
             // callback to the corresponding eventName
             this.context.on(eventName, (...args: any[]) => (this[propertyKey] as (...args: any[]) => void)(...args));
         });
-    }
-
-    // we define a function called listen which is very akin to server structures and it will run a couple of things
-    listen(callback?: (...args: any[]) => void) {
-        this.context.connect();
-        if (callback) {
-            this.on('ready', () => callback());
-        }
     }
 
     // we define a function that will handle a ready event after connecting
