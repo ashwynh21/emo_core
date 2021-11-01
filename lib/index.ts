@@ -3,8 +3,8 @@ import { Mail } from '../declarations/message';
 import { attachmentNotFound } from './responses';
 
 import contacts from './contacts';
-// had to install some weird type defs for the hummus package to shut it up
-import hummus from 'hummus-recipe';
+// we will be using pdf lib to get the reading functionality working
+import pdf from 'pdf-lib';
 
 const app = new Application({
     user: 'ashwynh21@gmail.com',
@@ -58,7 +58,7 @@ app.on('mail', (mail: Mail) => {
     // otherwise we should be good to now check the integrity of the pdf attachments.
     // then we loop through the attachments
     const files = pdf_attachments.map((attachment) => {
-        // ...
+        //...
     });
 });
 app.on('error', (error) => {
