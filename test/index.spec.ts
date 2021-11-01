@@ -3,6 +3,6 @@
 import { describe } from 'mocha';
 
 describe('application', () => {
-    require('imap.spec');
-    require('pdf.spec');
+    require('./imap.spec');
+    require('./pdf.spec');
 });
