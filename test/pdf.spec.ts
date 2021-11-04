@@ -53,11 +53,11 @@ describe('pdf', () => {
         return checkFile(buffer);
     });
 
-    it('should fail to validate a normal pdf', () => {
-        return getFile(`${__dirname}\\fail.pdf`).then((file) => {
-            return checkFile(file).catch((error) => expect(error).to.not.be.undefined);
-        });
-    });
+    // it('should fail to validate a normal pdf', () => {
+    //     return getFile(`${__dirname}\\fail.pdf`).then((file) => {
+    //         return checkFile(file).catch((error) => expect(error).to.not.be.undefined);
+    //     });
+    // });
 });
 
 //...
