@@ -4,4 +4,5 @@
 
 export default {
     'ashwyn@realnet.co.sz': 'Ashwyn D. Horton',
+    'phepha@realnet.co.sz': 'Phepha Application',
 };

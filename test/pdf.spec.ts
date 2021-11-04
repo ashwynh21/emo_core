@@ -25,7 +25,7 @@ describe('pdf', () => {
 
     // now we should expect it to be able to parse the file.
     it('should parse the buffer through', () => {
-        return PDFDocument.load(buffer, { ignoreEncryption: true }).then((document) => {
+        return PDFDocument.load(buffer, { ignoreEncryption: true }).then((document: any) => {
             // we generally do not expect errors
             file = document;
         });
